@@ -158,10 +158,12 @@ pub(super) fn sync_native_content_type(
         return;
     }
 
-    #[cfg(target_os = "macos")]
+    // Skip in unit tests: gpui's TestWindow is not backed by a native
+    // window and panics when asked for its raw window handle.
+    #[cfg(all(target_os = "macos", not(test)))]
     super::native::set_text_content_type(window, content_type);
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(any(not(target_os = "macos"), test))]
     let _ = (window, content_type);
 }
 
