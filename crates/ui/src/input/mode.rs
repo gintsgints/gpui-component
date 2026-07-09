@@ -7,6 +7,7 @@ use ropey::Rope;
 
 use super::display_map::DisplayMap;
 use crate::highlighter::DiagnosticSet;
+use crate::highlighter::LanguageRegistry;
 use crate::highlighter::SyntaxHighlighter;
 use crate::input::{InputEdit, RopeExt as _, TabSize};
 
@@ -245,6 +246,14 @@ impl InputMode {
 
                 let mut highlighter_ref = highlighter.borrow_mut();
                 if highlighter_ref.is_none() {
+                    // Do not create a highlighter if the language has no grammar.
+                    let has_grammar = LanguageRegistry::singleton()
+                        .language(language)
+                        .is_some_and(|config| config.has_grammar());
+                    if !has_grammar {
+                        return None;
+                    }
+
                     let new_highlighter = SyntaxHighlighter::new(language);
                     highlighter_ref.replace(new_highlighter);
                 }
@@ -256,7 +265,14 @@ impl InputMode {
                 let edit = replacement_input_edit(old_text, new_text, selected_range, change_text);
 
                 const SYNC_PARSE_TIMEOUT: Duration = Duration::from_millis(2);
-                let completed = h.update(Some(edit), new_text, Some(SYNC_PARSE_TIMEOUT));
+                // Skip parsing in the foreground above this threshold
+                const SYNC_PARSE_MAX_BYTES: usize = 256 * 1024;
+                let completed = if new_text.len() > SYNC_PARSE_MAX_BYTES {
+                    h.edit_tree(Some(edit), new_text);
+                    false
+                } else {
+                    h.update(Some(edit), new_text, Some(SYNC_PARSE_TIMEOUT))
+                };
                 if completed {
                     // Sync parse succeeded, cancel any pending background parse.
                     parse_task.borrow_mut().take();
