@@ -625,6 +625,79 @@ impl Render for SearchPanel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Root, theme::Theme};
+    use gpui::{TestAppContext, VisualTestContext};
+
+    struct EditorView {
+        editor: Entity<InputState>,
+    }
+
+    impl Render for EditorView {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            Input::new(&self.editor).h_full()
+        }
+    }
+
+    /// Regression test: selecting text that spans multiple lines and
+    /// activating find must not put a multiline query into the single-line
+    /// search input — painting it panics in `shape_line` ("text argument
+    /// should not contain newlines").
+    #[gpui::test]
+    fn test_search_with_multiline_selection(cx: &mut TestAppContext) {
+        let mut editor: Option<Entity<InputState>> = None;
+
+        let window = cx.update(|cx| {
+            cx.open_window(Default::default(), |window, cx| {
+                cx.set_global(Theme::default());
+                super::super::init(cx);
+
+                let state = cx.new(|cx| {
+                    InputState::new(window, cx)
+                        .multi_line(true)
+                        .searchable(true)
+                });
+                editor = Some(state.clone());
+                let view = cx.new(|_| EditorView { editor: state });
+                cx.new(|cx| Root::new(view, window, cx))
+            })
+            .unwrap()
+        });
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        let editor = editor.unwrap();
+
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_value("first line\nsecond line", window, cx);
+            });
+        });
+        cx.run_until_parked();
+
+        // Select across the line break, then activate find (like cmd-f).
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_selected_range(0..17, cx);
+                assert!(state.selected_text().to_string().contains('\n'));
+                state.on_action_search(&Search, window, cx);
+            });
+        });
+        // Paint the search panel; the single-line search input must be
+        // shapeable as one line.
+        cx.run_until_parked();
+
+        let query = cx.update(|_, cx| {
+            let panel = editor
+                .read(cx)
+                .search_panel
+                .clone()
+                .expect("search panel should be open after Search action");
+            panel.read(cx).search_input.read(cx).value().to_string()
+        });
+        assert!(
+            !query.contains('\n'),
+            "single-line search input must not contain newlines, got {:?}",
+            query
+        );
+    }
 
     #[test]
     fn test_search() {
