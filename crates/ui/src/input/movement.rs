@@ -55,24 +55,17 @@ impl InputState {
         cx.notify()
     }
 
-    /// Move the cursor vertically by one line (up or down) while preserving the column if possible.
+    /// Calculate the target offset for moving the cursor vertically by `move_lines`
+    /// (positive for down, negative for up), preserving the preferred column if possible.
     ///
-    /// move_lines: Number of lines to move vertically (positive for down, negative for up).
-    pub(super) fn move_vertical(
-        &mut self,
-        move_lines: isize,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    /// Returns `None` if the input is single line or has not been laid out yet.
+    pub(super) fn vertical_offset(&self, move_lines: isize) -> Option<usize> {
         if self.mode.is_single_line() {
-            return;
+            return None;
         }
-        let Some(last_layout) = &self.last_layout else {
-            return;
-        };
+        let last_layout = self.last_layout.as_ref()?;
 
         let offset = self.cursor();
-        let was_preferred_column = self.preferred_column;
 
         let mut display_point = self.display_map.offset_to_wrap_display_point(offset);
 
@@ -97,7 +90,7 @@ impl InputState {
         display_point.column = 0;
         let mut new_offset = self.display_map.wrap_display_point_to_offset(display_point);
 
-        if let Some((preferred_x, column)) = was_preferred_column {
+        if let Some((preferred_x, column)) = self.preferred_column {
             // Get display point again to update local_row.
             let mut next_display_point = self.display_map.offset_to_wrap_display_point(new_offset);
             next_display_point.column = 0;
@@ -123,6 +116,23 @@ impl InputState {
                 new_offset = line_start_offset + column.min(max_line_len);
             }
         }
+
+        Some(new_offset)
+    }
+
+    /// Move the cursor vertically by one line (up or down) while preserving the column if possible.
+    ///
+    /// move_lines: Number of lines to move vertically (positive for down, negative for up).
+    pub(super) fn move_vertical(
+        &mut self,
+        move_lines: isize,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let was_preferred_column = self.preferred_column;
+        let Some(new_offset) = self.vertical_offset(move_lines) else {
+            return;
+        };
 
         self.pause_blink_cursor(cx);
         let direction = if move_lines < 0 {

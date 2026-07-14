@@ -1282,19 +1282,17 @@ impl InputState {
     }
 
     pub(super) fn select_up(&mut self, _: &SelectUp, _: &mut Window, cx: &mut Context<Self>) {
-        if self.mode.is_single_line() {
+        let Some(offset) = self.vertical_offset(-1) else {
             return;
-        }
-        let offset = self.start_of_line().saturating_sub(1);
-        self.select_to(self.previous_boundary(offset), cx);
+        };
+        self.select_to(offset, cx);
     }
 
     pub(super) fn select_down(&mut self, _: &SelectDown, _: &mut Window, cx: &mut Context<Self>) {
-        if self.mode.is_single_line() {
+        let Some(offset) = self.vertical_offset(1) else {
             return;
-        }
-        let offset = (self.end_of_line() + 1).min(self.text.len());
-        self.select_to(self.next_boundary(offset), cx);
+        };
+        self.select_to(offset, cx);
     }
 
     pub(super) fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
