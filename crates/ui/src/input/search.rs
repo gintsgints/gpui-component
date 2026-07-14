@@ -210,6 +210,13 @@ impl InputState {
         let text = self.text.clone();
         let editor = cx.entity();
         let selected_text = Rope::from(self.selected_text());
+        // A multiline selection cannot prefill the single-line search input,
+        // painting it would panic in `shape_line`.
+        let selected_text = if selected_text.lines_len() > 1 {
+            Rope::new()
+        } else {
+            selected_text
+        };
         search_panel.update(cx, |this, cx| {
             this.editor = editor;
             this.matcher.update(&text);
