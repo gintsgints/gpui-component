@@ -1282,19 +1282,17 @@ impl InputState {
     }
 
     pub(super) fn select_up(&mut self, _: &SelectUp, _: &mut Window, cx: &mut Context<Self>) {
-        if self.mode.is_single_line() {
+        let Some(offset) = self.vertical_offset(-1) else {
             return;
-        }
-        let offset = self.start_of_line().saturating_sub(1);
-        self.select_to(self.previous_boundary(offset), cx);
+        };
+        self.select_to(offset, cx);
     }
 
     pub(super) fn select_down(&mut self, _: &SelectDown, _: &mut Window, cx: &mut Context<Self>) {
-        if self.mode.is_single_line() {
+        let Some(offset) = self.vertical_offset(1) else {
             return;
-        }
-        let offset = (self.end_of_line() + 1).min(self.text.len());
-        self.select_to(self.next_boundary(offset), cx);
+        };
+        self.select_to(offset, cx);
     }
 
     pub(super) fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
@@ -3887,6 +3885,111 @@ ORDER BY id
                 // clamped + collapsed
                 s.set_selected_range(100..100, cx);
                 assert_eq!(s.selected_range(), 11..11);
+            });
+        });
+    }
+
+    /// Regression test: shift+up/shift+down must extend the selection with
+    /// column-preserving vertical movement (same as plain arrow keys), instead
+    /// of the old `end_of_line + 1` path that always swallowed the newline
+    /// (rendered as an "invisible character" stub on the next line) and
+    /// overshot two lines when the next line was empty.
+    #[gpui::test]
+    fn test_select_up_down_preserves_column(cx: &mut TestAppContext) {
+        let input_view = InputView::new(cx);
+        let mut cx = VisualTestContext::from_window(input_view.window_handle.into(), cx);
+        let input = input_view.input;
+
+        // Offsets: line 0 "hello" = 0..5, line 1 "" = 6..6, line 2 "hello" = 7..12
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                state.set_value("hello\n\nhello", window, cx);
+            });
+        });
+        cx.run_until_parked();
+
+        // Place the cursor at line 0, column 3. This also records the
+        // preferred column used by vertical movement.
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                state.set_cursor_position(Position::new(0, 3), window, cx);
+                assert_eq!(state.cursor(), 3);
+            });
+        });
+        cx.run_until_parked();
+
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                // Shift+down onto the empty line: the selection must stop at
+                // its start (offset 6). The old path selected 3..7, jumping
+                // straight into line 2.
+                state.select_down(&SelectDown, window, cx);
+                assert_eq!(state.selected_range, (3..6).into());
+
+                // Shift+down again: column 3 is restored on line 2 (offset
+                // 10), not clamped to the line start reached above.
+                state.select_down(&SelectDown, window, cx);
+                assert_eq!(state.selected_range, (3..10).into());
+
+                // Shift+up retraces the same offsets back.
+                state.select_up(&SelectUp, window, cx);
+                assert_eq!(state.selected_range, (3..6).into());
+                state.select_up(&SelectUp, window, cx);
+                assert_eq!(state.selected_range, (3..3).into());
+
+                // Shift+up on the first line clamps, matching plain MoveUp.
+                state.select_up(&SelectUp, window, cx);
+                assert_eq!(state.selected_range, (3..3).into());
+            });
+        });
+    }
+
+    /// Same regression as above, but anchored at column 0: the old
+    /// `end_of_line + 1` path selected the whole first line plus the newline
+    /// (0..6) on the first shift+down instead of stopping at the start of the
+    /// next line.
+    #[gpui::test]
+    fn test_select_up_down_from_column_zero(cx: &mut TestAppContext) {
+        let input_view = InputView::new(cx);
+        let mut cx = VisualTestContext::from_window(input_view.window_handle.into(), cx);
+        let input = input_view.input;
+
+        // Offsets: line 0 "hello" = 0..5, line 1 "" = 6..6, line 2 "hello" = 7..12
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                state.set_value("hello\n\nhello", window, cx);
+            });
+        });
+        cx.run_until_parked();
+
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                state.set_cursor_position(Position::new(0, 0), window, cx);
+                assert_eq!(state.cursor(), 0);
+            });
+        });
+        cx.run_until_parked();
+
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                // Shift+down lands at column 0 of the empty line (offset 6),
+                // not past its newline.
+                state.select_down(&SelectDown, window, cx);
+                assert_eq!(state.selected_range, (0..6).into());
+
+                // Shift+down again: column 0 of line 2 (offset 7).
+                state.select_down(&SelectDown, window, cx);
+                assert_eq!(state.selected_range, (0..7).into());
+
+                // Shift+up retraces back to an empty selection at the anchor.
+                state.select_up(&SelectUp, window, cx);
+                assert_eq!(state.selected_range, (0..6).into());
+                state.select_up(&SelectUp, window, cx);
+                assert_eq!(state.selected_range, (0..0).into());
+
+                // Shift+up on the first line clamps.
+                state.select_up(&SelectUp, window, cx);
+                assert_eq!(state.selected_range, (0..0).into());
             });
         });
     }
