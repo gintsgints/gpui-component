@@ -549,6 +549,14 @@ impl TextElement {
             .zip(lines.iter())
         {
             let prev_lines_offset = *prev_lines_offset;
+
+            // The range ends exactly at the start of this line, so it covers
+            // nothing on it. Skip the line instead of painting the minimum
+            // empty-line stub over the cursor sitting at column 0.
+            if end_ix == prev_lines_offset && start_ix < prev_lines_offset {
+                break;
+            }
+
             let line_size = line.size(line_height);
             let line_wrap_width = line_size.width;
 
