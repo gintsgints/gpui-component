@@ -3943,4 +3943,54 @@ ORDER BY id
             });
         });
     }
+
+    /// Same regression as above, but anchored at column 0: the old
+    /// `end_of_line + 1` path selected the whole first line plus the newline
+    /// (0..6) on the first shift+down instead of stopping at the start of the
+    /// next line.
+    #[gpui::test]
+    fn test_select_up_down_from_column_zero(cx: &mut TestAppContext) {
+        let input_view = InputView::new(cx);
+        let mut cx = VisualTestContext::from_window(input_view.window_handle.into(), cx);
+        let input = input_view.input;
+
+        // Offsets: line 0 "hello" = 0..5, line 1 "" = 6..6, line 2 "hello" = 7..12
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                state.set_value("hello\n\nhello", window, cx);
+            });
+        });
+        cx.run_until_parked();
+
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                state.set_cursor_position(Position::new(0, 0), window, cx);
+                assert_eq!(state.cursor(), 0);
+            });
+        });
+        cx.run_until_parked();
+
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                // Shift+down lands at column 0 of the empty line (offset 6),
+                // not past its newline.
+                state.select_down(&SelectDown, window, cx);
+                assert_eq!(state.selected_range, (0..6).into());
+
+                // Shift+down again: column 0 of line 2 (offset 7).
+                state.select_down(&SelectDown, window, cx);
+                assert_eq!(state.selected_range, (0..7).into());
+
+                // Shift+up retraces back to an empty selection at the anchor.
+                state.select_up(&SelectUp, window, cx);
+                assert_eq!(state.selected_range, (0..6).into());
+                state.select_up(&SelectUp, window, cx);
+                assert_eq!(state.selected_range, (0..0).into());
+
+                // Shift+up on the first line clamps.
+                state.select_up(&SelectUp, window, cx);
+                assert_eq!(state.selected_range, (0..0).into());
+            });
+        });
+    }
 }
