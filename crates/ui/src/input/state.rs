@@ -460,6 +460,8 @@ pub struct InputState {
     pub(super) inline_completion: InlineCompletion,
 
     pub(super) auto_scroll: AutoScroll,
+
+    pub(super) line_number_offset: i32,
 }
 
 impl EventEmitter<InputEvent> for InputState {}
@@ -562,6 +564,7 @@ impl InputState {
             inline_completion: InlineCompletion::default(),
             cursor_line_end_affinity: false,
             auto_scroll: AutoScroll::default(),
+            line_number_offset: 0,
         }
     }
 
@@ -676,6 +679,20 @@ impl InputState {
             *l = line_number;
         }
         cx.notify();
+    }
+
+    /// Offset every displayed gutter line number, only for [`InputMode::CodeEditor`] mode.
+    pub fn line_number_offset(mut self, offset: i32) -> Self {
+        self.line_number_offset = offset;
+        self
+    }
+
+    /// Set the gutter line number offset at runtime. See [`Self::line_number_offset`].
+    pub fn set_line_number_offset(&mut self, offset: i32, cx: &mut Context<Self>) {
+        if self.line_number_offset != offset {
+            self.line_number_offset = offset;
+            cx.notify();
+        }
     }
 
     /// Set the number of rows for the multi-line Textarea.
