@@ -2046,8 +2046,9 @@ impl Element for TextElement {
                 .iter()
                 .zip(last_layout.visible_buffer_lines.iter())
             {
+                let displayed_line = buffer_line as i64 + 1 + i64::from(state.line_number_offset);
                 let line_no: SharedString =
-                    format!("{:>width$}", buffer_line + 1, width = line_number_len).into();
+                    format!("{:>width$}", displayed_line, width = line_number_len).into();
 
                 let runs = if current_row == Some(buffer_line) {
                     &current_line_runs

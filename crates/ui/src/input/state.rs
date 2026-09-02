@@ -467,6 +467,8 @@ pub struct InputState {
     pub(super) breakpoints: std::collections::HashSet<usize>,
     /// Whether the clickable breakpoint gutter is drawn (requires line numbers).
     pub(super) breakpoints_enabled: bool,
+
+    pub(super) line_number_offset: i32,
 }
 
 impl EventEmitter<InputEvent> for InputState {}
@@ -571,6 +573,7 @@ impl InputState {
             auto_scroll: AutoScroll::default(),
             breakpoints: std::collections::HashSet::new(),
             breakpoints_enabled: false,
+            line_number_offset: 0,
         }
     }
 
@@ -718,6 +721,18 @@ impl InputState {
         }
         cx.emit(InputEvent::BreakpointToggled(line));
         cx.notify();
+    /// Offset every displayed gutter line number, only for [`InputMode::CodeEditor`] mode.
+    pub fn line_number_offset(mut self, offset: i32) -> Self {
+        self.line_number_offset = offset;
+        self
+    }
+
+    /// Set the gutter line number offset at runtime. See [`Self::line_number_offset`].
+    pub fn set_line_number_offset(&mut self, offset: i32, cx: &mut Context<Self>) {
+        if self.line_number_offset != offset {
+            self.line_number_offset = offset;
+            cx.notify();
+        }
     }
 
     /// Set the number of rows for the multi-line Textarea.
