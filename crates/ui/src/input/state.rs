@@ -721,6 +721,8 @@ impl InputState {
         }
         cx.emit(InputEvent::BreakpointToggled(line));
         cx.notify();
+    }
+
     /// Offset every displayed gutter line number, only for [`InputMode::CodeEditor`] mode.
     pub fn line_number_offset(mut self, offset: i32) -> Self {
         self.line_number_offset = offset;
